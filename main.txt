@@ -1,0 +1,25 @@
+func add(a,b) {
+    c := a+b
+    return c
+}
+
+field Main {
+    use {
+        main
+    }
+}
+
+comp main {
+    val {
+        msg:str
+    }
+    impl {
+        func get(self) {
+            return 2.2
+        }
+        pub func main(self) {
+            v := self.get()
+            return add(2.0,3.0)
+        }
+    }
+}
