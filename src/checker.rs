@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Index};
 
-use crate::{parser::{self, BinaryOp, EnumDef, EnumVariant, Expr, FieldDef, FunctionDef, Item, Parameter, Program, Stmt, UnaryOp, ValueDecl, Visibility}, standart_lib::{comp_op, global_functions}};
+use crate::{parser::{self, BinaryOp, EnumDef, EnumVariant, Expr, FieldDef, FunctionDef, Item, Parameter, Program, Stmt, UnaryOp, ValueDecl, Visibility}, standart_lib::{comp_op, get_type_by_op, global_functions}};
 use crate::standart_lib::{bool_op,num_op,int_float_op,str_op,str_int_op};
 
 #[derive(Debug,Clone,PartialEq)]
@@ -32,6 +32,30 @@ pub enum Type {
     Custom(String),
     Unknown,
     Null
+}
+impl Type {
+    pub fn iter() -> Vec<Self> {
+        let mut v = Type::bs_vec();
+        v.extend(Type::arrt_vec());
+        v
+    }
+    fn bs_vec() -> Vec<Self> {
+        vec![
+            Type::Int,
+            Type::Float,
+            Type::Str,
+            Type::Bool,
+            Type::Null,
+        ]
+    }
+    fn arrt_vec() -> Vec<Self> {
+        let mut arrv = Vec::new();
+        for t in Type::bs_vec() {
+            arrv.push(Type::Arr(Box::new(t)));
+        }
+        arrv.push(Type::Arr(Box::new(Type::Arr(Box::new(Type::Unknown)))));
+        arrv
+    }
 }
 
 #[derive(Debug,Clone,PartialEq)]
@@ -110,6 +134,15 @@ pub enum Command {
         index: Value,
         value: Value
     },
+    VoidCall {
+        callee: String,
+        args: Vec<Value>
+    },
+    VoidMemberCall {
+        object: Value,
+        callee: Value,
+        args: Vec<Value>
+    },
     Return(Value),
     Expr(Value)
 }
@@ -132,53 +165,7 @@ pub enum Expression {
 }
 
 pub fn operations(op:&BinaryOp,left:&Type,right:&Type) -> Result<Type,CheckerError> {
-    if left == &Type::Bool && right == &Type::Bool {
-        if bool_op().contains(op) {
-            Ok(Type::Bool)
-        } else {
-            Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })
-        }
-    } else if left == &Type::Int {
-        if right == &Type::Int {
-            if num_op().contains(op) {Ok(Type::Int)}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else if right == &Type::Float {
-            if int_float_op().contains(op) {Ok(Type::Float)}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else {
-            Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })
-        }
-    } else if left == &Type::Float {
-        if right == &Type::Float {
-            if num_op().contains(op) {Ok(Type::Float)}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else if right == &Type::Int {
-            if int_float_op().contains(op) {Ok(Type::Float)}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else {
-            Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })
-        }
-    } else if left == &Type::Str {
-        if right == &Type::Str {
-            if str_op().contains(op) {Ok(Type::Str)}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else if right == &Type::Int {
-            if str_int_op().contains(op) {Ok(Type::Str)}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else {
-            Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })
-        }
-    } else if left != &Type::Unknown {
-        if right == left {
-            if comp_op().contains(op) {Ok(right.clone())}
-            else {Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })}
-        } else {
-            Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })
-        }
-    } else {
-        Ok(Type::Unknown)
-        //Err(CheckerError::OperationError { op: op.clone(), left: left.clone(), right: right.clone() })
-    }
+    get_type_by_op(op, left, right)
 }
 
 #[derive(Debug,Clone,PartialEq)]
@@ -186,6 +173,7 @@ pub struct Checker {
     pub program: Program,
     pub current: usize,
     pub check: String,
+    pub calls: HashMap<String,Vec<(String,Vec<Value>)>>,
     pub pointeritems: HashMap<String,PointerItem>,
     pub fields: HashMap<String,Field>,
     pub functions: HashMap<String,Func>,
@@ -198,6 +186,7 @@ impl Checker {
             program,
             current: 0,
             check: "Program".to_string(),
+            calls: HashMap::new(),
             pointeritems: HashMap::new(),
             fields: HashMap::new(),
             functions: global_functions(),
@@ -274,6 +263,22 @@ impl Checker {
                 print!(".{}=",member);
                 self.print_value(value);
             }
+            Command::VoidCall { callee, args } => {
+                print!("{}(",callee);
+                for a in args {
+                    self.print_value(a);
+                    print!(",")
+                }
+                print!(")")
+            }
+            Command::VoidMemberCall { object, callee, args } => {
+                self.print_value(object);print!(".");self.print_value(callee);print!("(");
+                for a in args {
+                    self.print_value(a);
+                    print!(",")
+                }
+                print!(")")
+            }
             Command::Expr(v) => self.print_value(v),
             Command::Return(v) => {
                 print!("return ");self.print_value(v);
@@ -336,7 +341,7 @@ impl Checker {
                 }
             }
             Value::Var(v) => print!("{}",v),
-            Value::Empty => print!("~")
+            Value::Empty => print!("{:?}",v)
         }
     }
     
@@ -366,6 +371,15 @@ impl Checker {
         }
     }
 
+    fn print_call(&self,a:&String,c:&Vec<Value>) {
+        print!("        {}(",a);
+        for arg in c {
+            self.print_value(&arg);
+            print!(",")
+        }
+        print!(")\n")
+    }
+
     pub fn check(&mut self) -> Result<checkReturn,CheckerError> {
         self.pointeritems = self.get_items()?;
         self.parse_top()?;
@@ -379,7 +393,15 @@ impl Checker {
         for (a,f) in &self.fields {
             self.print_field(a, f);
         }
-        println!("{:?}",self.enums);
+        println!("Function calls:");
+        for (a,v) in &self.calls {
+            println!("    {} calls:",a);
+            for (a,c) in v {
+                self.print_call(a,c);
+
+            }
+        }
+        //println!("{:?}",self.enums);
         Ok(checkReturn::None)
     }
     fn check_top(&mut self) -> Result<checkReturn,CheckerError> {
@@ -493,7 +515,7 @@ impl Checker {
         let mut fvars = f.args.clone();
         let mut fargs = f.args.clone();
         let mut fret = f.ret.clone();
-        let mut fbody = f.body.clone();
+        let mut fbody = Vec::new();
         let mut methods = self.functions.clone();
         if pfield != "@Program@".to_string() {
             let f = match self.fields.get(&pfield) {
@@ -503,21 +525,26 @@ impl Checker {
             fvars.extend(self.get_field_values(f));
             methods.extend(self.get_field_methods(f));
         }
-        for c in fbody.iter() {
+        for c in f.body.iter() {
             match c.clone() {
                 Command::Declare { name, var_type, value } => {
+                    self.record_call(&value,&pfield);
                     let cvt = self.get_type(&value, &fvars,&methods)?;
-                    fvars.insert(name, Var { var_type:cvt, value });
+                    fvars.insert(name.clone(), Var { var_type:cvt.clone(), value: value.clone() });
+                    fbody.push(Command::Declare { name: name.clone(), var_type: cvt.clone(), value: value.clone() })
                 },
                 Command::Assign { target, value } => {
+                    self.record_call(&value,&pfield);
                     let v = fvars.get_mut(&target);
                     let v = match v {
                         Some(v) => v,
                         None => return Err(CheckerError::KeyError { ident: target, item: "Variable".to_string() })
                     };
-                    v.value = value;
+                    v.value = value.clone();
+                    fbody.push(Command::Assign { target: target, value: value.clone() });
                 },
                 Command::Return(v) => {
+                    self.record_call(&v,&pfield);
                     let rettype = self.get_type(&v, &fvars,&methods)?;
                     if fret == Type::Unknown {
                         fret = rettype.clone()
@@ -525,58 +552,79 @@ impl Checker {
                     if fret != rettype {
                         Err(CheckerError::ValueError { exp: fret.clone(), found: rettype })?
                     }
+                    fbody.push(Command::Return(v));
                 }
                 Command::Expr(e) => match e {
                     Value::Expr(e) => match (*e).clone() {
                         Expression::Call { callee, args } => {
-                            // First collect the argument types
                             let mut arg_types = Vec::new();
                             for ca in &args {
                                 let ct = self.get_type(ca, &fvars,&methods)?;
                                 arg_types.push(ct);
                             }
                             
-                            // Then modify the function arguments
-                            let func = match self.functions.get_mut(&callee) {
+                            let func = match self.functions.get(&callee) {
                                 Some(f) => f,
                                 None => return Err(CheckerError::KeyError { ident: callee.clone(), item: "Global function".to_string() })
                             };
-                            
-                            for ((_ename,exp), ct) in func.args.iter_mut().zip(arg_types) {
+                            let mut args = Vec::new();
+                            for ((_ename,exp), ct) in func.args.iter().zip(arg_types) {
+                                let mut arg = exp.clone();
                                 if exp.var_type == Type::Unknown {
-                                    exp.var_type = ct.clone();
+                                    arg.var_type = ct.clone();
                                 }
                                 if exp.var_type != ct {
                                     return Err(CheckerError::ValueError { exp: exp.var_type.clone(), found: ct });
                                 }
+                                args.push(exp.value.clone());
                             }
+                            match self.calls.get_mut("@Program@") {
+                                Some(calls) => {calls.push((callee.clone(), args.clone()));}
+                                None => {
+                                    self.calls.insert("@Program@".to_string(), vec![(callee.clone(), args.clone())]);
+                                }
+                            }
+                            fbody.push(Command::VoidCall { callee: callee.clone(), args: args});
                         }
                         Expression::MemberCall { object, callee, args } => {
-                            let cs = if let Value::Var(i) = callee {i} else {return Err(CheckerError::SomethingDoesntLineup {msg:"Not found callee".to_string()})};
+                            let cs = if let Value::Var(i) = callee.clone() {i} else {return Err(CheckerError::SomethingDoesntLineup {msg:"Not found callee".to_string()})};
                             let o = match self.fields.get(&pfield) {Some(f) => f,None => Err(CheckerError::KeyError { ident: pfield.clone(), item: "Field".to_string() })?};
                             
-                            // First collect the argument types
                             let mut arg_types = Vec::new();
                             for ca in &args {
                                 let ct = self.get_type(ca, &f.vars,&methods)?;
                                 arg_types.push(ct);
                             }
                             
-                            // Then modify the method arguments
                             let mut mthds = self.get_field_methods(o);
-                            let func = match mthds.get_mut(&cs) {
+                            let func = match mthds.get(&cs) {
                                 Some(f) => f,
                                 None => return Err(CheckerError::KeyError { ident: cs.clone(), item: "Local function".to_string() })
                             };
                             
-                            for ((_ename,exp), ct) in func.args.iter_mut().zip(arg_types) {
+                            let mut args = Vec::new();
+                            for ((_ename,exp), ct) in func.args.iter().zip(arg_types) {
+                                let mut arg = exp.clone();
                                 if exp.var_type == Type::Unknown {
-                                    exp.var_type = ct.clone();
+                                    arg.var_type = ct.clone();
                                 }
                                 if exp.var_type != ct {
                                     return Err(CheckerError::ValueError { exp: exp.var_type.clone(), found: ct });
                                 }
+                                args.push(exp.value.clone());
                             }
+                            let c = match callee.clone() {
+                                Value::Var(i) => i,
+                                _ => Err(CheckerError::SomethingDoesntLineup { msg: "Expected var from callee in method call".to_string() })?
+                            };
+
+                            match self.calls.get_mut(&pfield) {
+                                Some(calls) => {calls.push((c.clone(), args.clone()));}
+                                None => {
+                                    self.calls.insert(pfield.clone(), vec![(c.clone(), args.clone())]);
+                                }
+                            }
+                            fbody.push(Command::VoidCall { callee: c, args: args});
                         }
                         _ => ()
                     }
@@ -595,6 +643,35 @@ impl Checker {
             vars: fvars,
             body: fbody
         }))
+    }
+
+    fn record_call(&mut self,v:&Value,f:&String) {
+        match v {
+            Value::Expr(e) => match (**e).clone() {
+                Expression::Call { callee, args } => {
+                    match self.calls.get_mut(f) {
+                        Some(calls) => {calls.push((callee, args));}
+                        None => {self.calls.insert(f.clone(), vec![(callee, args)]);}
+                    }
+                },
+                Expression::MemberCall { object, callee, args } => {
+                    let o = match object {
+                        Value::Var(i) => i,
+                        _ => "@Undefined@".to_string()
+                    };
+                    let c = match callee {
+                        Value::Var(i) => i,
+                        _ => "@Undefined@".to_string()
+                    };
+                    match self.calls.get_mut(&o) {
+                        Some(calls) => {calls.push((c, args));}
+                        None => {self.calls.insert(f.clone(), vec![(c, args)]);}
+                    }
+                }
+                _ => ()
+            }
+            _ => ()
+        }
     }
 
     fn get_field_methods(&self,f:&Field) -> HashMap<String, Func> {
@@ -766,7 +843,6 @@ impl Checker {
         let mut params = HashMap::new();
         for (i,p) in prms.iter().enumerate() {
             if fl != "@" && i==0 {
-                println!("Parsing method");
                 params.insert(p.name.clone(), Var {
                     var_type: Type::Custom(fl.to_string()),
                     value: Value::Empty

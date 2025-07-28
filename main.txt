@@ -1,4 +1,4 @@
-func add(a,b) {
+func add(a:int,b) {
     c := a+b
     return c
 }
@@ -12,13 +12,17 @@ field Main {
 comp main {
     val {
         msg:str
+        x:int
+        y:int
     }
     impl {
         func get(self) {
             return 2.2
         }
         pub func main(self) {
-            v := self.get()
+            z := add(2.1,3)
+            z = self.get()
+            print("z")
             return add(2.0,3.0)
         }
     }

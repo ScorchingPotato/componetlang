@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::parser::{Visibility,BinaryOp};
-use crate::checker::{Func,Type,Var,Value};
+use crate::checker::{CheckerError, Func, Type, Value, Var};
 
 pub fn bool_op() -> [BinaryOp;4] {
     [BinaryOp::Eq,BinaryOp::And,BinaryOp::Or,BinaryOp::Ne]
@@ -22,6 +22,151 @@ pub fn str_op() -> [BinaryOp;3] {
 }
 pub fn str_int_op() -> [BinaryOp;1] {
     [BinaryOp::Mul]
+}
+
+fn is_num(t:&Type) -> bool {
+    [Type::Int,Type::Float].contains(t)
+}
+
+fn can_add(l:&Type,r:&Type) -> bool {
+    if l==r {
+        match l {
+            Type::Bool => false,
+            Type::Null => false,
+            Type::Option(tps) => tps.iter().map(|t| can_add(t,r)).all(|t| t),
+            Type::Custom(_) => false,
+            _ => true
+        }
+    } else {
+        is_num(l) && is_num(r)
+    }
+}
+fn can_sub(l:&Type,r:&Type) -> bool {
+    if l==r {
+        match l {
+            Type::Bool => false,
+            Type::Null => false,
+            Type::Str => false,
+            Type::Option(tps) => tps.iter().map(|t| can_sub(t,r)).all(|t| t),
+            Type::Custom(_) => false,
+            Type::Arr(_) => false,
+            _ => true
+        }
+    } else {
+        is_num(l) && is_num(r)
+    }
+}
+fn can_mult(l:&Type,r:&Type) -> bool {
+    match r {
+        Type::Int => match l {
+            Type::Int => true,
+            Type::Float => true,
+            Type::Str => true,
+            Type::Arr(_) => true,
+            Type::Option(tps) => tps.iter().map(|t| can_mult(t,r)).all(|t| t),
+            _ => false
+        }
+        Type::Float => is_num(l),
+        Type::Option(tps) => tps.iter().map(|t| can_mult(l,t)).all(|t| t),
+        _ => false
+    }
+}
+
+pub fn comp(left:&Type,right:&Type) -> bool {
+    left==right
+}
+pub fn bit(left:&Type,right:&Type) -> bool {
+    left==&Type::Bool && right==&Type::Bool
+}
+pub fn add(left:&Type,right:&Type) -> bool {
+    can_add(left,right)
+}
+pub fn sub(left:&Type,right:&Type) -> bool {
+    can_sub(left,right)
+}
+pub fn mul(left:&Type,right:&Type) -> bool {
+    can_mult(left, right)
+}
+pub fn div(left:&Type,right:&Type) -> bool {
+    left==right || (is_num(left) && is_num(right))
+}
+pub fn mdl(left:&Type,right:&Type) -> bool {
+    left==right || (is_num(left) && is_num(right))
+}
+
+pub fn operation(op:&BinaryOp,left:&Type,right:&Type) -> bool {
+    match op {
+        BinaryOp::Add => add(left, right),
+        BinaryOp::Sub => sub(left, right),
+        BinaryOp::Mul => mul(left, right),
+        BinaryOp::Div => div(left, right),
+        BinaryOp::Mod => mdl(left, right),
+        BinaryOp::And => bit(left, right),
+        BinaryOp::Or => bit(left, right),
+        _ => comp(left, right)
+    }
+}
+
+pub fn get_type_by_op(op:&BinaryOp,l:&Type,r:&Type) -> Result<Type,CheckerError> {
+    let t;
+    if l == r {
+        if l != &Type::Unknown {
+            if !operation(op, l, r) {return Err(CheckerError::OperationError { op: op.clone(), left: l.clone(), right: r.clone() });}
+            if comp_op().contains(op) {return Ok(Type::Bool)}
+            if l==&Type::Float || r==&Type::Float {return Ok(Type::Float)}
+            else {return Ok(l.clone())}
+        }
+        t = get_undf(op);
+    }
+    else if l!=&Type::Unknown {
+        t = get_undf_right_type(op,l)
+    }
+    else if r!=&Type::Unknown {
+        t = get_undf_left_type(op, r)
+    }
+    else {
+        return Err(CheckerError::OperationError { op: op.clone(), left: l.clone(), right: r.clone() });
+    }
+    match t  {
+        Type::Option(t) => if t.len()==1 {
+            return Ok(t.first().unwrap().clone())
+        } else {
+            return Ok(Type::Option(t.clone()))
+        }
+        _ => Err(CheckerError::SomethingDoesntLineup { msg: "Got not Option type from get_type tree (std)".to_string() })
+    }
+    
+}
+fn get_undf(op:&BinaryOp) -> Type {
+    let mut opttps = Vec::new();
+    for l in &Type::iter() {
+        for r in &Type::iter() {
+            if operation(op, l, r) {
+                opttps.push(l.clone());
+            }
+        }
+    }
+    Type::Option(opttps)
+}
+
+fn get_undf_right_type(op:&BinaryOp,l:&Type) -> Type {
+    let mut opttps = Vec::new();
+    for t in Type::iter() {
+        if operation(op, l, &t) {
+            opttps.push(t);
+        }
+    }
+    Type::Option(opttps)
+
+}
+fn get_undf_left_type(op:&BinaryOp,r:&Type) -> Type {
+    let mut opttps = Vec::new();
+    for t in Type::iter() {
+        if operation(op, &t, r) {
+            opttps.push(t);
+        }
+    }
+    Type::Option(opttps)
 }
 
 pub fn global_functions() -> HashMap<String,Func> {

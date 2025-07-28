@@ -1,6 +1,7 @@
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::checker::Checker;
+use crate::standart_lib::get_type_by_op;
 use std::path::Path;
 use std::io::prelude::*;
 use std::fs::File;
