@@ -256,6 +256,7 @@ impl Parser {
         let mut parameters = Vec::new();
         if !self.check(&TokenType::LParen) {
             loop {
+                if self.check(&TokenType::RParen) {break}
                 let paramname = self.consume_identifier("Expected parameter name")?;
                 let paramtype = if self.check(&TokenType::Colon) {
                     Some(self.parse_type_annot()?)
