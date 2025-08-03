@@ -148,7 +148,7 @@ pub enum Expr {
         object: Box<Expr>,
         index: Box<Expr>,
     },
-    ArrayLiteral(Vec<Expr>)
+    ArrayLiteral(Vec<Expr>),
 }
 #[derive(Clone,Debug,PartialEq)]
 pub enum Stmt {
@@ -256,6 +256,7 @@ impl Parser {
         let mut parameters = Vec::new();
         if !self.check(&TokenType::LParen) {
             loop {
+                if self.check(&TokenType::RParen) {break}
                 let paramname = self.consume_identifier("Expected parameter name")?;
                 let paramtype = if self.check(&TokenType::Colon) {
                     Some(self.parse_type_annot()?)
@@ -535,7 +536,7 @@ impl Parser {
         while !self.is_at_end() && !self.match_token(&TokenType::RBrace) {
             arms.push(self.parse_match_arm()?);
             if !self.check(&TokenType::RBrace) {self.consume(&TokenType::Comma, "Expected ',' after a match arm")?;}
-            
+            else {break}
         }
         self.consume(&TokenType::RBrace, "Expected '}' after match body")?;
         Ok(Stmt::Match { expr, arms })

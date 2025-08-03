@@ -1,6 +1,13 @@
-func add(a:int,b) {
-    c := a+b
-    return c
+func add(a:int,b:int) {
+    return a+b
+}
+
+comp main {
+    impl {
+        pub func main(self) {
+            return 2+3
+        }
+    }
 }
 
 field Main {
@@ -9,21 +16,17 @@ field Main {
     }
 }
 
-comp main {
+comp human {
     val {
-        msg:str
-        x:int
-        y:int
+        name:str
     }
     impl {
-        func get(self) {
-            return 2.2
-        }
-        pub func main(self) {
-            z := add(2.1,3)
-            z = self.get()
-            print("z")
-            return add(2.0,3.0)
+        pub func greet() {
+            print("Hello")
         }
     }
+}
+
+field Human {
+    use {human}
 }

@@ -1,27 +1,9 @@
 use std::collections::HashMap;
 use crate::parser::{Visibility,BinaryOp};
-use crate::checker::{CheckerError, Func, Type, Value, Var};
+use crate::checker::{CheckerError, Comp, Field, Func, Type, Value, Var};
 
-pub fn bool_op() -> [BinaryOp;4] {
-    [BinaryOp::Eq,BinaryOp::And,BinaryOp::Or,BinaryOp::Ne]
-}
 pub fn comp_op() -> [BinaryOp;6] {
     [BinaryOp::Eq,BinaryOp::Ne,BinaryOp::Gt,BinaryOp::Gte,BinaryOp::Lt,BinaryOp::Lte]
-}
-pub fn num_op() -> Vec<BinaryOp> {
-    let mut v = Vec::new();
-    v.extend_from_slice(&[BinaryOp::Add,BinaryOp::Sub,BinaryOp::Mul,BinaryOp::Div,BinaryOp::Mod]);
-    v.extend_from_slice(&comp_op());
-    v
-}
-pub fn int_float_op() -> [BinaryOp;5] {
-    [BinaryOp::Add,BinaryOp::Sub,BinaryOp::Mul,BinaryOp::Div,BinaryOp::Mod]
-}
-pub fn str_op() -> [BinaryOp;3] {
-    [BinaryOp::Add,BinaryOp::Eq,BinaryOp::Ne]
-}
-pub fn str_int_op() -> [BinaryOp;1] {
-    [BinaryOp::Mul]
 }
 
 fn is_num(t:&Type) -> bool {
@@ -107,25 +89,38 @@ pub fn operation(op:&BinaryOp,left:&Type,right:&Type) -> bool {
     }
 }
 
-pub fn get_type_by_op(op:&BinaryOp,l:&Type,r:&Type) -> Result<Type,CheckerError> {
-    let t;
-    if l == r {
-        if l != &Type::Unknown {
-            if !operation(op, l, r) {return Err(CheckerError::OperationError { op: op.clone(), left: l.clone(), right: r.clone() });}
-            if comp_op().contains(op) {return Ok(Type::Bool)}
-            if l==&Type::Float || r==&Type::Float {return Ok(Type::Float)}
-            else {return Ok(l.clone())}
+fn type_from(l:&Type,r:&Type) -> Type {
+    let t = match l {
+        Type::Float => Type::Float,
+        Type::Str => Type::Str,
+        Type::Arr(t) => Type::Arr(t.clone()),
+        Type::Int => match r {
+            Type::Float => Type::Float,
+            Type::Int => Type::Int,
+            _ => Type::Unknown,
         }
-        t = get_undf(op);
-    }
-    else if l!=&Type::Unknown {
-        t = get_undf_right_type(op,l)
-    }
-    else if r!=&Type::Unknown {
-        t = get_undf_left_type(op, r)
-    }
-    else {
-        return Err(CheckerError::OperationError { op: op.clone(), left: l.clone(), right: r.clone() });
+        _ => l.clone()
+    };
+    Type::Option(vec![t])
+}
+
+pub fn get_type_by_op(op:&BinaryOp,l:&Type,r:&Type) -> Result<Type,CheckerError> {
+    println!("{:?} {:?} {:?}",l,op,r);
+    let t;
+    if l == &Type::Unknown {
+        if l == &Type::Unknown {
+            t = get_undf(op)
+        } else {
+            t = get_undf_left_type(op, r)
+        }
+    } else if r == &Type::Unknown {
+        t = get_undf_right_type(op, l)
+    } else {
+        if operation(op, l, r) {
+            t = type_from(l, r)
+        } else {
+            return  Err(CheckerError::OperationError { op: op.clone(), left:l.clone(), right: r.clone() });
+        }
     }
     match t  {
         Type::Option(t) => if t.len()==1 {
@@ -133,7 +128,7 @@ pub fn get_type_by_op(op:&BinaryOp,l:&Type,r:&Type) -> Result<Type,CheckerError>
         } else {
             return Ok(Type::Option(t.clone()))
         }
-        _ => Err(CheckerError::SomethingDoesntLineup { msg: "Got not Option type from get_type tree (std)".to_string() })
+        _ => return Err(CheckerError::SomethingDoesntLineup { msg: "Got not Option type from get_type tree (std)".to_string() })?
     }
     
 }

@@ -1,0 +1,59 @@
+comp main {impl{pub func run(){}}}
+field Main {use {main}}
+
+comp integer {
+  impl {
+    pub func:float to_float() {}
+    pub func:str to_str() {}
+    pub func:int abs() {}
+    pub func:int sign() {}
+    pub func:int copy() {}
+  }
+}
+field Integer {use {integer}}
+comp floating {
+  impl {
+    pub func:int to_int() {}
+    pub func:str to_str() {}
+    pub func:float round() {}
+    pub func:float ceil() {}
+    pub func:float floor() {}
+    pub func:int sign() {}
+    pub func:float copy() {}
+  }
+}
+field Floating {use {floating}}
+comp string {
+  impl {
+    pub func:int len() {}
+    pub func:bool is_empty() {}
+    pub func:str slice(start:int,end:int) {}
+    pub func:arr:str split(seperator:str) {}
+    pub func:int to_int() {}
+    pub func:float to_float() {}
+    pub func:str lower() {}
+    pub func:str upper() {}
+    pub func:str copy() {}
+  }
+}
+field String {use {string}}
+comp array {
+  impl {
+    pub func:int len() {}
+    pub func:null push(value) {}
+    pub func pop() {}
+    pub func get(index:int) {}
+    pub func:bool is_empty() {}
+    pub func:bool contains(value) {}
+    pub func:arr copy() {}
+  }
+}
+field Array {use {array}}
+comp option {
+  impl {
+    pub func unwrap() {}
+    pub func:bool some() {}
+    pub func copy() {}
+  }
+}
+field Option {use {option}}

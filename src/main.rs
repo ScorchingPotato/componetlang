@@ -5,12 +5,13 @@ use crate::standart_lib::get_type_by_op;
 use std::path::Path;
 use std::io::prelude::*;
 use std::fs::File;
-
+use inkwell::context::Context;
 
 mod lexer;
 mod parser;
 mod checker;
 mod standart_lib;
+mod compiler;
 
 fn main() {
     let p = Path::new("main.txt");
@@ -34,11 +35,17 @@ fn main() {
         Err(e) => {println!("{}",e.throw());None}
     };
     if program.is_some() {
-        println!("{:?}\n",program);
         let mut c= Checker::new(program.unwrap());
-        match c.check() {
+        match c.raw() {
             Ok(p) => println!(""),
-            Err(e) => println!("{:?}",e)
+            Err(e) => e.throw(),
         }
+        let cmpl = compiler::Compiler {
+            fields: c.fields,
+            glob_funcs: c.functions,
+            enums: c.enums,
+            context: Context::create(), 
+        };
+        cmpl.run()
     }
 }
